@@ -32,6 +32,9 @@ class WCS_ATT_Display {
 
 		// Replace plain variation price html with subscription options template.
 		add_filter( 'woocommerce_available_variation', array( __CLASS__, 'add_convert_to_sub_product_options_to_variation_data' ), 10, 3 );
+
+		// Modify product price once subscribed to be correct format
+		add_filter( 'woocommerce_subscriptions_product_price_string', array( __CLASS__, 'modify_product_price_to_installments' ), 10, 3 );
 	}
 
 	/**
@@ -373,8 +376,8 @@ class WCS_ATT_Display {
 		if ( $subscription_schemes = WCS_ATT_Schemes::get_cart_subscription_schemes() ) {
 
 			?>
-			<h2><?php _e( 'Cart Subscription', WCS_ATT::TEXT_DOMAIN ); ?></h2>
-			<p><?php _e( 'Interested in subscribing to these items?', WCS_ATT::TEXT_DOMAIN ); ?></p>
+			<h2><?php _e( 'Payment Plan', WCS_ATT::TEXT_DOMAIN ); ?></h2>
+			<p><?php _e( 'Interested in spreading the cost of these items?', WCS_ATT::TEXT_DOMAIN ); ?></p>
 			<ul class="wcsatt-options-cart"><?php
 
 				$options                       = array();
@@ -384,6 +387,9 @@ class WCS_ATT_Display {
 					'description' => _x( 'No thanks.', 'cart subscription selection - negative response', WCS_ATT::TEXT_DOMAIN ),
 					'selected'    => $active_subscription_scheme_id === '0',
 				);
+
+				// Calculate price from original product objects
+				$total = WCS_ATT_Cart::get_original_cart_total();
 
 				foreach ( $subscription_schemes as $subscription_scheme ) {
 
@@ -397,10 +403,17 @@ class WCS_ATT_Display {
 
 					$sub_suffix  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => '', 'subscription_price' => false ) );
 
+                    $installments = WCS_ATT_Schemes::get_scheme_installments( $subscription_scheme_id, $total );
+
+                    // Initial payment of X followed by X every week for 8 weeks
+                    $desc = sprintf( __('Initial payment of %1$s followed by %2$s %3$s', 'cart subscription selection - positive response', WCS_ATT::TEXT_DOMAIN ),
+                                        wc_price( $installments[1] ), wc_price( $installments[2] ), $sub_suffix );
+
 					$options[ $subscription_scheme[ 'id' ] ] = array(
-						'description' => sprintf( __( 'Yes, %s.', 'cart subscription selection - positive response', WCS_ATT::TEXT_DOMAIN ), $sub_suffix ),
+						'description' => $desc,
 						'selected'    => $active_subscription_scheme_id === $subscription_scheme_id,
 					);
+
 				}
 
 				foreach ( $options as $option_id => $option ) {
@@ -557,6 +570,32 @@ class WCS_ATT_Display {
 		return apply_filters( 'wcsatt_add_to_cart_text', $button_text );
 	}
 
+	public static function modify_product_price_to_installments( $price, $product, $include ) {
+
+		// If this isn't a converted product then leave it alone
+		if ( $product->is_converted_to_sub !== 'yes' || ! $product->price ) {
+			return $price;
+		}
+
+		if ( ! $product->subscription_sign_up_fee ) {
+			return $price;
+		}
+
+		// var_dump($product);
+
+		$new_price = wcs_price_string( array(
+			'recurring_amount'      => $product->subscription_price,
+			// Schedule details
+			'subscription_interval' => $product->subscription_period_interval,
+			'subscription_period'   => $product->subscription_period,
+			'subscription_length'   => $product->subscription_length,
+			'initial_amount'		=> $product->subscription_sign_up_fee + $product->subscription_price,
+			'initial_description'	=> 'up front',
+			'use_per_slash' 		=> false,
+		) );
+
+		return $new_price;
+	}
 }
 
 WCS_ATT_Display::init();

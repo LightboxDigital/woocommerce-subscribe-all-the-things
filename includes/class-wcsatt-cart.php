@@ -175,6 +175,16 @@ class WCS_ATT_Cart {
 			$cart_item[ 'data' ]->subscription_period_interval = $active_subscription_scheme[ 'subscription_period_interval' ];
 			$cart_item[ 'data' ]->subscription_length          = $active_subscription_scheme[ 'subscription_length' ];
 
+			// Modify according to installments
+			$installment = WCS_ATT_Schemes::get_scheme_installments( $active_subscription_scheme['id'], (float)$cart_item[ 'data' ]->price );
+
+			$cart_item[ 'data' ]->price                        = (string)end( $installment );
+			$cart_item[ 'data' ]->subscription_price           = (string)end( $installment );
+			$cart_item[ 'data' ]->subscription_sign_up_fee     = (string)( reset( $installment ) - end( $installment ) );
+			$cart_item[ 'data' ]->initial_amount               = (string) reset( $installment );
+			$cart_item[ 'data' ]->subscription_length          = count( $installment ) - 1;
+			$cart_item[ 'data' ]->subscription_one_time_shipping = true;
+
 		} else {
 
 			$cart_item[ 'data' ]->is_converted_to_sub = 'no';
@@ -240,6 +250,22 @@ class WCS_ATT_Cart {
 				WC()->cart->cart_contents[ $cart_item_key ] = self::convert_to_sub( $cart_item );
 			}
 		}
+	}
+
+	public static function get_original_cart_total() {
+		$total = 0;
+
+		foreach ( WC()->cart->cart_contents as $cart_item_key => $cart_item ) {
+			if( $cart_item[ 'data' ]->is_converted_to_sub ) {
+				// Get price from prior product
+				$total += (float) ( $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price );
+			} else {
+				// Get price from current cart item
+				$total += (float) ( $cart_item[ 'line_total' ] );
+			}
+		}
+
+		return $total;
 	}
 
 	/**
