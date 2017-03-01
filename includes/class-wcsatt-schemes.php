@@ -314,4 +314,74 @@ class WCS_ATT_Schemes {
 
 		return $cart_level_schemes;
 	}
+
+	/**
+	 * Returns array of installments for scheme against given amount.
+	 * @param  integer $scheme_id ID of the scheme.
+	 * @param  float   $amount    Amount to split.
+	 * @return array|boolean
+	 */
+    public static function get_scheme_installments( $scheme_id, $amount ) {
+		$scheme = self::get_subscription_scheme_by_id( $scheme_id, self::get_cart_subscription_schemes() );
+
+		if( !$scheme ) {
+			return false;
+		}
+
+		$io = $i = $scheme['subscription_length'];
+
+        // Start a reminaing tally of cost breakdown.
+        $remaining = $amount;
+
+        // Set up our initial and installment values.
+        $initial = $installments = 0;
+
+        // Build a payment array now.
+        $payments = array();
+
+        // Work out instalments without deposit first.
+        $installments = round( ($remaining / ($i)), 2, PHP_ROUND_HALF_DOWN );
+        $remaining = $remaining - ($installments * $i);
+
+        // If there is a minimum initial payment percentage we need to work things slightly differently.
+        if ( $settings['initial_payment_percentage'] > 0 ) {
+            $initial = round( ($total * ($settings['initial_payment_percentage'] / 100)), 2, PHP_ROUND_HALF_DOWN );
+
+            // If the initial payment calculated is greater than installment
+            // amount then recalculate installments.
+            if ( $initial > $installments ) {
+                // Reset remaining value.
+                $remaining = $amount - $initial;
+                // Recalculate installments with one less installment due to initial.
+                $i = $i - 1;
+                $installments = round( ($remaining / $i), 2, PHP_ROUND_HALF_DOWN );
+                // Recalculate remaining amount.
+                $remaining = $remaining - ($installments * $i);
+
+                // As we have an initial value begin the payments array.
+                $payments[] = $initial;
+            }
+        }
+
+        // Loop over installments and add to array.
+        for ( $i2 = 0; $i2 < $i; $i2++ ) {
+            $payments[] = $installments;
+        }
+
+        // If their is an amount remaining, take it from first payment.
+        if ( 0 !== $remaining ) {
+            $payments[0] = $payments[0] + $remaining;
+            $remaining = 0;
+        }
+
+        // Fix payment array index to represent payment installment.
+        $new_payments = array();
+        foreach ( $payments as $key => $payment ) {
+            $new_payments[ $key + 1 ] = $payment;
+        }
+        $payments = $new_payments;
+
+        return $payments;
+	}
+
 }
