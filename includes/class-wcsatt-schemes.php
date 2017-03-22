@@ -374,6 +374,16 @@ class WCS_ATT_Schemes {
             $remaining = 0;
         }
 
+		// Make sure first amount is greater than second
+		if( $payments[0] < $payments[1] ) {
+			$reduction = 0;
+			foreach ( $payments as $key => &$payment ) {
+				$reduction += 0.01;
+				$payment -= 0.01;
+			}
+			$payments[0] += $reduction;
+		}
+
         // Fix payment array index to represent payment installment.
         $new_payments = array();
         foreach ( $payments as $key => $payment ) {
