@@ -394,16 +394,15 @@ class WCS_ATT_Display {
 				foreach ( $subscription_schemes as $subscription_scheme ) {
 
 					$subscription_scheme_id = $subscription_scheme[ 'id' ];
+					$installments = WCS_ATT_Schemes::get_scheme_installments( $subscription_scheme_id, $total );
 
 					$dummy_product                               = new WC_Product( '1' );
 					$dummy_product->is_converted_to_sub          = 'yes';
 					$dummy_product->subscription_period          = $subscription_scheme[ 'subscription_period' ];
 					$dummy_product->subscription_period_interval = $subscription_scheme[ 'subscription_period_interval' ];
-					$dummy_product->subscription_length          = $subscription_scheme[ 'subscription_length' ];
+					$dummy_product->subscription_length          = ($subscription_scheme[ 'subscription_length' ] - 1);
 
 					$sub_suffix  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => '', 'subscription_price' => false ) );
-
-                    $installments = WCS_ATT_Schemes::get_scheme_installments( $subscription_scheme_id, $total );
 
                     // Initial payment of X followed by X every week for 8 weeks
                     $desc = sprintf( __('Initial payment of %1$s followed by %2$s %3$s', 'cart subscription selection - positive response', WCS_ATT::TEXT_DOMAIN ),
