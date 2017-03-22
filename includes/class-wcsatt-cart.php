@@ -39,6 +39,12 @@ class WCS_ATT_Cart {
 		// Add scheme ID to cart item meta so resubscribe can later fetch it by ID.
 		// Needed because length data is not stored on the subscription.
 		add_action( 'woocommerce_add_subscription_item_meta', __CLASS__ . '::store_cart_item_wcsatt_id', 10, 2 );
+
+		// Store partial payment plan into order
+		add_action( 'woocommerce_thankyou', __CLASS__ . '::store_scheme_id_order' );
+
+		// Auto-complete partia payments
+		add_action( 'woocommerce_order_status_processing', __CLASS__ . '::autocomplete_partial_payments' );
 	}
 
 	/**
@@ -339,6 +345,43 @@ class WCS_ATT_Cart {
 	public static function store_cart_item_wcsatt_id( $item_id, $cart_item ) {
 		if ( isset( $cart_item[ 'wccsub_data' ][ 'active_subscription_scheme_id' ] ) ) {
 			wc_add_order_item_meta( $item_id, '_wcsatt_scheme_id', $cart_item[ 'wccsub_data' ][ 'active_subscription_scheme_id' ] );
+		}
+	}
+
+	public static function store_scheme_id_order( $order_id ) {
+		// Check for session scheme
+		if( ! WC()->session->get( 'wcsatt-active-scheme-id' ) ) {
+			return;
+		}
+
+		// Add meta to the order for the scheme id
+		update_post_meta( $order_id, 'wcsatt_scheme_id', WC()->session->get( 'wcsatt-active-scheme-id' ) );
+	}
+
+	public static function autocomplete_partial_payments( $order_id ) {
+		$the_order = wc_get_order( $order_id );
+
+		$scheme = get_post_meta( $order_id, 'wcsatt_scheme_id' );
+
+		$sub = wcs_get_subscriptions_for_renewal_order( $order_id );
+
+		if( !$sub ) {
+			return;
+		}
+
+		if( !reset($sub)->order ) {
+			return;
+		}
+
+		$scheme = get_post_meta( reset($sub)->order->id, 'wcsatt_scheme_id' );
+
+		if( !$scheme ) {
+			return;
+		}
+
+		// If this is a repeat payment, mark it as complete
+		if ( wcs_order_contains_subscription( $the_order, 'renewal' ) ) {
+            $the_order->update_status('completed');
 		}
 	}
 }
