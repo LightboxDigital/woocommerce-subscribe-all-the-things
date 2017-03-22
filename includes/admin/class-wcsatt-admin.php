@@ -50,6 +50,11 @@ class WCS_ATT_Admin {
 
 		// Display subscription scheme admin metaboxes in the "Subscribe to Cart/Order" section.
 		add_action( 'woocommerce_admin_field_subscription_schemes', __CLASS__ . '::subscription_schemes_content' );
+
+        /**
+         * Partial Payment displays
+         */
+        add_action( 'manage_shop_order_posts_custom_column', __CLASS__ . '::order_column_payment', 50 );
 	}
 
 	/**
@@ -582,6 +587,11 @@ class WCS_ATT_Admin {
 			wp_enqueue_style( 'wcsatt_writepanel_css' );
 		}
 
+		// Add order list styles
+		if ( in_array( $screen_id, array( 'edit-shop_order', 'shop_order' ) ) ) {
+			wp_enqueue_style( 'wcsatt_order_css', WCS_ATT()->plugin_url() . '/assets/css/wcsatt-order.css', array( 'woocommerce_admin_styles' ), WCS_ATT::VERSION );
+		}
+
 		// WooCommerce admin pages.
 		if ( in_array( $screen_id, array( 'product', 'woocommerce_page_wc-settings' ) ) ) {
 
@@ -664,6 +674,30 @@ class WCS_ATT_Admin {
 			</p>
 		</div><?php
 	}
+
+    public static function order_column_payment( $column ) {
+        global $post, $woocommerce, $the_order;
+
+        if ( empty( $the_order ) || $the_order->id != $post->ID ) {
+            $the_order = wc_get_order( $post->ID );
+        }
+
+        if ( 'order_title' != $column ) {
+            return;
+        }
+
+        // This is a parent order
+        if ( wcs_order_contains_subscription( $the_order ) ) {
+            $sub = wcs_get_subscriptions_for_order( $the_order->id );
+			?><span class="wcsatt_order_tag wcsatt_order_tag--first-partial"><?php _e( 'First Partial Payment', 'wcsatt' ); ?></span><?php
+        }
+
+        // This is a partial payment
+        if ( wcs_order_contains_subscription( $the_order, 'renewal' ) ) {
+            $sub = wcs_get_subscriptions_for_renewal_order( $the_order->id );
+			?><span class="wcsatt_order_tag"><?php _e( 'Partial Payment', 'wcsatt' ); ?></span><?php
+        }
+    }
 
 }
 
