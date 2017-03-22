@@ -34,7 +34,8 @@ class WCS_ATT_Display {
 		add_filter( 'woocommerce_available_variation', array( __CLASS__, 'add_convert_to_sub_product_options_to_variation_data' ), 10, 3 );
 
 		// Modify product price once subscribed to be correct format
-		add_filter( 'woocommerce_subscriptions_product_price_string', array( __CLASS__, 'modify_product_price_to_installments' ), 10, 3 );
+		// add_filter( 'woocommerce_subscriptions_product_price_string_inclusions', array( __CLASS__, 'modify_product_price_inclusions_to_installments' ), 999, 2 );
+		// add_filter( 'woocommerce_subscriptions_product_price_string', array( __CLASS__, 'modify_product_price_to_installments' ), 999, 3 );
 	}
 
 	/**
@@ -569,6 +570,23 @@ class WCS_ATT_Display {
 		return apply_filters( 'wcsatt_add_to_cart_text', $button_text );
 	}
 
+	public static function modify_product_price_inclusions_to_installments( $include, $product ) {
+		if ( $product->is_converted_to_sub !== 'yes' || ! $product->price ) {
+			return $include;
+		}
+
+		if ( ! $product->subscription_sign_up_fee ) {
+			return $include;
+		}
+
+		if( $include['sign_up_fee'] ) {
+			$include['sign_up_fee'] = $product->subscription_sign_up_fee + $product->subscription_price;
+		}
+
+
+		return $include;
+	}
+
 	public static function modify_product_price_to_installments( $price, $product, $include ) {
 
 		// If this isn't a converted product then leave it alone
@@ -580,20 +598,18 @@ class WCS_ATT_Display {
 			return $price;
 		}
 
-		// var_dump($product);
+		// $new_price = wcs_price_string( array(
+		// 	'recurring_amount'      => $product->subscription_price,
+		// 	// Schedule details
+		// 	'subscription_interval' => $product->subscription_period_interval,
+		// 	'subscription_period'   => $product->subscription_period,
+		// 	'subscription_length'   => $product->subscription_length,
+		// 	'initial_amount'		=> $product->subscription_sign_up_fee + $product->subscription_price,
+		// 	'initial_description'	=> 'up front',
+		// 	'use_per_slash' 		=> false,
+		// ) );
 
-		$new_price = wcs_price_string( array(
-			'recurring_amount'      => $product->subscription_price,
-			// Schedule details
-			'subscription_interval' => $product->subscription_period_interval,
-			'subscription_period'   => $product->subscription_period,
-			'subscription_length'   => $product->subscription_length,
-			'initial_amount'		=> $product->subscription_sign_up_fee + $product->subscription_price,
-			'initial_description'	=> 'up front',
-			'use_per_slash' 		=> false,
-		) );
-
-		return $new_price;
+		return $price;
 	}
 }
 
