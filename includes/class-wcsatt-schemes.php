@@ -394,4 +394,42 @@ class WCS_ATT_Schemes {
         return $payments;
 	}
 
+	/**
+	 * Returns array of installments for scheme against the cart.
+	 * @param  integer $scheme_id ID of the scheme.
+	 * @param  float   $amount    Amount to split.
+	 * @return array|boolean
+	 */
+    public static function get_cart_scheme_installments( $scheme_id, $cart_item_key = false ) {
+		$cart_installments = array();
+
+		foreach ( WC()->cart->cart_contents as $cart_item_key => $cart_item ) {
+			// Get price from  product
+			$price = $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price;
+
+			$cart_installments[ $cart_item_key ] = self::get_scheme_installments( $scheme_id, $price );
+
+			foreach( $cart_installments[ $cart_item_key ] as &$installment ) {
+				$installment = $installment * $cart_item['quantity'];
+			}
+		}
+
+		if ( $cart_item_key && isset( $cart_installments[ $cart_item_key ] ) ) {
+			return $cart_installments[ $cart_item_key ];
+		}
+
+		$installments_out = array();
+
+		foreach ( $cart_installments as $cart_key => $item ) {
+			foreach( $item as $key => $item_installment ) {
+				if ( !isset( $installments_out[ $key ] ) ) {
+					$installments_out[ $key ] = 0;
+				}
+
+				$installments_out[ $key ] += $item_installment;
+			}
+		}
+
+		return $installments_out;
+	}
 }
