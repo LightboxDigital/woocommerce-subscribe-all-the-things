@@ -45,6 +45,12 @@ class WCS_ATT_Cart {
 
 		// Auto-complete partia payments
 		add_action( 'woocommerce_order_status_processing', __CLASS__ . '::autocomplete_partial_payments' );
+
+		// Override price display
+		add_filter( 'woocommerce_subscriptions_product_price_string', __CLASS__ . '::modify_price_installments', 50, 3 );
+
+		// Filter subtotals to show correct length now initial payment exists in output
+		add_filter( 'woocommerce_cart_subscription_string_details', __CLASS__ . '::modify_subtotal_length' );
 	}
 
 	/**
@@ -188,7 +194,7 @@ class WCS_ATT_Cart {
 			$cart_item[ 'data' ]->subscription_price           = (string)end( $installment );
 			$cart_item[ 'data' ]->subscription_sign_up_fee     = (string)( reset( $installment ) - end( $installment ) );
 			$cart_item[ 'data' ]->initial_amount               = (string) reset( $installment );
-			$cart_item[ 'data' ]->subscription_length          = count( $installment ) - 1;
+			$cart_item[ 'data' ]->subscription_length          = count( $installment );
 			$cart_item[ 'data' ]->subscription_one_time_shipping = true;
 
 		} else {
@@ -264,7 +270,8 @@ class WCS_ATT_Cart {
 		foreach ( WC()->cart->cart_contents as $cart_item_key => $cart_item ) {
 			if( $cart_item[ 'data' ]->is_converted_to_sub ) {
 				// Get price from prior product
-				$total += (float) ( $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price );
+				$price = $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price;
+				$total += (float) ( $price * $cart_item[ 'quantity' ] );
 			} else {
 				// Get price from current cart item
 				$total += (float) ( $cart_item[ 'line_total' ] );
@@ -383,6 +390,69 @@ class WCS_ATT_Cart {
 		if ( wcs_order_contains_subscription( $the_order, 'renewal' ) ) {
             $the_order->update_status('completed');
 		}
+	}
+
+	public static function modify_price_installments( $subscription_string, $product, $include = array() ) {
+
+		global $wp_locale;
+
+		if ( ! is_object( $product ) ) {
+			$product = WC_Subscriptions::get_product( $product );
+		}
+
+		if ( ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+			return $subscription_string;
+		}
+
+		if ( ! $product->is_converted_to_sub ) {
+			return $subscription_string;
+		}
+
+		// var_dump($include['price']);
+
+		if ( $include['sign_up_fee'] && WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
+			if ( true === $include['sign_up_fee'] ) {
+				$sign_up_fee = WC_Subscriptions_Product::get_sign_up_fee( $product );
+			} elseif ( false !== $include['sign_up_fee'] ) { // Allow override of product's sign-up fee
+				$sign_up_fee = $include['sign_up_fee'];
+			} else {
+				$sign_up_fee = 0;
+			}
+
+			if ( ! $include['price'] ) {
+				$price = WC_Subscriptions_Product::get_price( $product );
+			} else {
+				$price = $include['price'];
+			}
+
+			// Hacky workaround for WooCommerce passing formatted prices everywhere... -_-
+			$price = (float) preg_replace( '#[^\d.]#', '', $price );
+			$sign_up_fee = (float) preg_replace( '#[^\d.]#', '', $sign_up_fee );
+
+			// Needs to account for quantity ???
+			$sign_up_fee = wc_price( $sign_up_fee + $price );
+
+			$product->subscription_length --;
+			$subscription_string = WC_Subscriptions_Product::get_price_string( $product, array( 'price' => wc_price( $price ), 'sign_up_fee' => false ) );
+			$product->subscription_length ++;
+
+			// translators: 1$: subscription string (e.g. "$15 on March 15th every 3 years for 6 years with 2 months free trial"), 2$: signup fee price (e.g. "and a $30 sign-up fee")
+			$subscription_string = sprintf( __( 'Initial payment of %2$s followed by %1$s', 'woocommerce-subscriptions' ), $subscription_string, $sign_up_fee );
+		}
+
+		return $subscription_string;
+	}
+
+	public static function modify_subtotal_length( $args ) {
+		$args['subscription_length'] --;
+		return $args;
+		// return array(
+		// 	'recurring_amount'      => $recurring_amount,
+		// 	// Schedule details
+		// 	'subscription_interval' => wcs_cart_pluck( $cart, 'subscription_period_interval' ),
+		// 	'subscription_period'   => wcs_cart_pluck( $cart, 'subscription_period', '' ),
+		// 	'subscription_length'   => wcs_cart_pluck( $cart, 'subscription_length' ),
+		// ) ) );
 	}
 }
 

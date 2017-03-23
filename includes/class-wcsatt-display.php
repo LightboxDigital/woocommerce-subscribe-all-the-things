@@ -32,10 +32,6 @@ class WCS_ATT_Display {
 
 		// Replace plain variation price html with subscription options template.
 		add_filter( 'woocommerce_available_variation', array( __CLASS__, 'add_convert_to_sub_product_options_to_variation_data' ), 10, 3 );
-
-		// Modify product price once subscribed to be correct format
-		// add_filter( 'woocommerce_subscriptions_product_price_string_inclusions', array( __CLASS__, 'modify_product_price_inclusions_to_installments' ), 999, 2 );
-		// add_filter( 'woocommerce_subscriptions_product_price_string', array( __CLASS__, 'modify_product_price_to_installments' ), 999, 3 );
 	}
 
 	/**
@@ -390,24 +386,28 @@ class WCS_ATT_Display {
 				);
 
 				// Calculate price from original product objects
-				$total = WCS_ATT_Cart::get_original_cart_total();
+				// $total = WCS_ATT_Cart::get_original_cart_total();
 
 				foreach ( $subscription_schemes as $subscription_scheme ) {
 
 					$subscription_scheme_id = $subscription_scheme[ 'id' ];
-					$installments = WCS_ATT_Schemes::get_scheme_installments( $subscription_scheme_id, $total );
+					$installments = WCS_ATT_Schemes::get_cart_scheme_installments( $subscription_scheme_id );
 
-					$dummy_product                               = new WC_Product( '1' );
+					$dummy_product                               = new WC_Product_Subscription( '1' );
+					$dummy_product->product_type                 = 'subscription';
 					$dummy_product->is_converted_to_sub          = 'yes';
+					$dummy_product->subscription_price           = end( $installments );
 					$dummy_product->subscription_period          = $subscription_scheme[ 'subscription_period' ];
 					$dummy_product->subscription_period_interval = $subscription_scheme[ 'subscription_period_interval' ];
-					$dummy_product->subscription_length          = ($subscription_scheme[ 'subscription_length' ] - 1);
+					$dummy_product->subscription_length          = $subscription_scheme[ 'subscription_length' ];
 
-					$sub_suffix  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => '', 'subscription_price' => false ) );
+					if ( $installments[1] !== $installments[2] ) {
+						$dummy_product->subscription_sign_up_fee = ( reset( $installments ) - end( $installments ) );
+					}
 
-                    // Initial payment of X followed by X every week for 8 weeks
-                    $desc = sprintf( __('Initial payment of %1$s followed by %2$s %3$s', 'cart subscription selection - positive response', WCS_ATT::TEXT_DOMAIN ),
-                                        wc_price( $installments[1] ), wc_price( $installments[2] ), $sub_suffix );
+					// var_dump($dummy_product);
+
+					$desc  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => wc_price( end( $installments ) ) ) );
 
 					$options[ $subscription_scheme[ 'id' ] ] = array(
 						'description' => $desc,
@@ -568,48 +568,6 @@ class WCS_ATT_Display {
 		}
 
 		return apply_filters( 'wcsatt_add_to_cart_text', $button_text );
-	}
-
-	public static function modify_product_price_inclusions_to_installments( $include, $product ) {
-		if ( $product->is_converted_to_sub !== 'yes' || ! $product->price ) {
-			return $include;
-		}
-
-		if ( ! $product->subscription_sign_up_fee ) {
-			return $include;
-		}
-
-		if( $include['sign_up_fee'] ) {
-			$include['sign_up_fee'] = $product->subscription_sign_up_fee + $product->subscription_price;
-		}
-
-
-		return $include;
-	}
-
-	public static function modify_product_price_to_installments( $price, $product, $include ) {
-
-		// If this isn't a converted product then leave it alone
-		if ( $product->is_converted_to_sub !== 'yes' || ! $product->price ) {
-			return $price;
-		}
-
-		if ( ! $product->subscription_sign_up_fee ) {
-			return $price;
-		}
-
-		// $new_price = wcs_price_string( array(
-		// 	'recurring_amount'      => $product->subscription_price,
-		// 	// Schedule details
-		// 	'subscription_interval' => $product->subscription_period_interval,
-		// 	'subscription_period'   => $product->subscription_period,
-		// 	'subscription_length'   => $product->subscription_length,
-		// 	'initial_amount'		=> $product->subscription_sign_up_fee + $product->subscription_price,
-		// 	'initial_description'	=> 'up front',
-		// 	'use_per_slash' 		=> false,
-		// ) );
-
-		return $price;
 	}
 }
 
