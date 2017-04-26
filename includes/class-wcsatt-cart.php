@@ -44,13 +44,16 @@ class WCS_ATT_Cart {
 		add_action( 'woocommerce_thankyou', __CLASS__ . '::store_scheme_id_order' );
 
 		// Auto-complete partia payments
-		add_action( 'woocommerce_order_status_processing', __CLASS__ . '::autocomplete_partial_payments' );
+		add_action( 'woocommerce_payment_complete', __CLASS__ . '::autocomplete_partial_payments' );
 
 		// Override price display
 		add_filter( 'woocommerce_subscriptions_product_price_string', __CLASS__ . '::modify_price_installments', 50, 3 );
 
 		// Filter subtotals to show correct length now initial payment exists in output
 		add_filter( 'woocommerce_cart_subscription_string_details', __CLASS__ . '::modify_subtotal_length' );
+
+		// Ensure renewals don't include shipping
+		add_filter( 'wcs_renewal_order_items', __CLASS__ . '::remove_renewal_shipping', 10, 3 );
 	}
 
 	/**
@@ -453,6 +456,44 @@ class WCS_ATT_Cart {
 		// 	'subscription_period'   => wcs_cart_pluck( $cart, 'subscription_period', '' ),
 		// 	'subscription_length'   => wcs_cart_pluck( $cart, 'subscription_length' ),
 		// ) ) );
+	}
+
+	/**
+	 * Remove shipping from renewal items
+	 * @param  array  $items        Array of line items.
+	 * @param  bool   $new_order    Whether this is a new order or not.
+	 * @param  object $subscription Subscription object.
+	 * @return array                Modified items array.
+	 */
+	public static function remove_renewal_shipping( $items, $new_order, $subscription ) {
+        $has_scheme = false;
+
+        foreach( $items as $key => $item ) {
+            if ( ! isset( $item['wcsatt_scheme_id'] ) ) {
+                continue;
+            }
+
+            if ( ! $item['wcsatt_scheme_id'] ) {
+                continue;
+            }
+
+            $has_scheme = true;
+        }
+
+        // No partial payment products in here so leave as is
+        if ( ! $has_scheme ) {
+            return $items;
+        }
+
+		foreach( $items as $key => $item ) {
+			if ( $item->type !== 'shipping' ) {
+				continue;
+			}
+
+			unset( $items[$key] );
+		}
+
+		return $items;
 	}
 }
 
