@@ -297,18 +297,20 @@ class WCS_ATT_Schemes {
 			$cart_level_schemes_keys[] = $cart_level_scheme[ 'id' ];
 		}
 
-		foreach ( WC()->cart->cart_contents as $cart_item ) {
+		if ( ! is_admin() ) {
+			foreach ( WC()->cart->cart_contents as $cart_item ) {
 
-			if ( ! WCS_ATT_Cart::is_supported_product_type( $cart_item ) ) {
-				return false;
-			}
+				if ( ! WCS_ATT_Cart::is_supported_product_type( $cart_item ) ) {
+					return false;
+				}
 
-			if ( $cart_item_level_schemes = self::get_subscription_schemes( $cart_item, 'cart-item' ) ) {
-				return false;
-			}
+				if ( $cart_item_level_schemes = self::get_subscription_schemes( $cart_item, 'cart-item' ) ) {
+					return false;
+				}
 
-			if ( WC_Subscriptions_Product::is_subscription( $cart_item[ 'product_id' ] ) ) {
-				return false;
+				if ( WC_Subscriptions_Product::is_subscription( $cart_item[ 'product_id' ] ) ) {
+					return false;
+				}
 			}
 		}
 
@@ -344,24 +346,24 @@ class WCS_ATT_Schemes {
         $remaining = $remaining - ($installments * $i);
 
         // If there is a minimum initial payment percentage we need to work things slightly differently.
-        if ( $settings['initial_payment_percentage'] > 0 ) {
-            $initial = round( ($total * ($settings['initial_payment_percentage'] / 100)), 2, PHP_ROUND_HALF_DOWN );
-
-            // If the initial payment calculated is greater than installment
-            // amount then recalculate installments.
-            if ( $initial > $installments ) {
-                // Reset remaining value.
-                $remaining = $amount - $initial;
-                // Recalculate installments with one less installment due to initial.
-                $i = $i - 1;
-                $installments = round( ($remaining / $i), 2, PHP_ROUND_HALF_DOWN );
-                // Recalculate remaining amount.
-                $remaining = $remaining - ($installments * $i);
-
-                // As we have an initial value begin the payments array.
-                $payments[] = $initial;
-            }
-        }
+        // if ( $settings['initial_payment_percentage'] > 0 ) {
+        //     $initial = round( ($total * ($settings['initial_payment_percentage'] / 100)), 2, PHP_ROUND_HALF_DOWN );
+		//
+        //     // If the initial payment calculated is greater than installment
+        //     // amount then recalculate installments.
+        //     if ( $initial > $installments ) {
+        //         // Reset remaining value.
+        //         $remaining = $amount - $initial;
+        //         // Recalculate installments with one less installment due to initial.
+        //         $i = $i - 1;
+        //         $installments = round( ($remaining / $i), 2, PHP_ROUND_HALF_DOWN );
+        //         // Recalculate remaining amount.
+        //         $remaining = $remaining - ($installments * $i);
+		//
+        //         // As we have an initial value begin the payments array.
+        //         $payments[] = $initial;
+        //     }
+        // }
 
         // Loop over installments and add to array.
         for ( $i2 = 0; $i2 < $i; $i2++ ) {
