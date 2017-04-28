@@ -2,13 +2,41 @@
  * Admin order tag
  */
 .wcsatt_order_tag {
-	display: inline-block;
+	display: block;
+	text-align: center;
 	padding: 1px 5px;
 	border-radius: 3px;
 	background: #ffba00;
 	color: #fff;
 }
 
+.wcsatt_order_tag + .wcsatt_order_tag {
+	margin-top: 8px;
+}
+
 .wcsatt_order_tag--first-partial {
 	background: #73a724;
+}
+
+.wcsatt_order_tag--completed {
+	background: #2ea2cc;
+}
+
+.wcsatt_order_tag--incomplete {
+	background: #a00;
+}
+
+.wcsatt-partial-payment-breakdown {
+	padding: 8px 12px;
+	color: #fff;
+	background: #ffba00;
+}
+
+.wcsatt-partial-payment-breakdown--paid {
+	background: #73a724;
+}
+
+.wcsatt-partial-payment-breakdown__heading {
+	font-size: 18px;
+	font-weight: bold;
 }

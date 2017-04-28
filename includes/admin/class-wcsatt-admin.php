@@ -55,6 +55,8 @@ class WCS_ATT_Admin {
          * Partial Payment displays
          */
         add_action( 'manage_shop_order_posts_custom_column', __CLASS__ . '::order_column_payment', 50 );
+
+        add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_partial_payment_breakdown', 50 );
 	}
 
 	/**
@@ -588,7 +590,7 @@ class WCS_ATT_Admin {
 		}
 
 		// Add order list styles
-		if ( in_array( $screen_id, array( 'edit-shop_order', 'shop_order' ) ) ) {
+		if ( in_array( $screen_id, array( 'edit-shop_order', 'shop_order', 'shop_subscription' ) ) ) {
 			wp_enqueue_style( 'wcsatt_order_css', WCS_ATT()->plugin_url() . '/assets/css/wcsatt-order.css', array( 'woocommerce_admin_styles' ), WCS_ATT::VERSION );
 		}
 
@@ -678,6 +680,8 @@ class WCS_ATT_Admin {
     public static function order_column_payment( $column ) {
         global $post, $woocommerce, $the_order;
 
+		$sub = false;
+
         if ( empty( $the_order ) || $the_order->id != $post->ID ) {
             $the_order = wc_get_order( $post->ID );
         }
@@ -697,8 +701,81 @@ class WCS_ATT_Admin {
             $sub = wcs_get_subscriptions_for_renewal_order( $the_order->id );
 			?><span class="wcsatt_order_tag"><?php _e( 'Partial Payment', 'wcsatt' ); ?></span><?php
         }
+
+		if ( ! is_array( $sub ) ) {
+			return;
+		}
+
+		$sub = reset( $sub );
+
+		if ( ! wcs_is_subscription( $sub ) ) {
+			return;
+		}
+
+		if ( $sub->post_status == 'wc-expired' ) {
+			?><span class="wcsatt_order_tag wcsatt_order_tag--completed"><?php _e( 'Completed', 'wcsatt' ); ?></span><?php
+		} else if( ! $sub->needs_payment() ) {
+			/* ?><span class="wcsatt_order_tag wcsatt_order_tag--incomplete"><?php _e( 'Incompleted', 'wcsatt' ); ?></span><?php */
+		}
     }
 
+    public static function related_orders_partial_payment_breakdown( $post ) {
+        $subscription = $parent = $order = false;
+		$renewals = array();
+
+        if ( wcs_is_subscription( $post->ID ) ) {
+			// Store subscription
+			$subscription = wcs_get_subscription( $post->ID );
+        } else {
+			$subscription = reset(wcs_get_subscriptions_for_order( $post->ID, array( 'order_type' => array( 'parent', 'renewal' ) ) ));
+        }
+
+		if ( ! wcs_is_subscription( $subscription ) ) {
+			return false;
+		}
+
+		// Get parent
+		$parent = $subscription->order;
+		// Get renewals
+		$renewals = $subscription->get_related_orders( 'all', 'renewal' );
+		// Create an orders var too containing renewal and parent
+		$orders = array_merge( array( $parent ), $renewals );
+
+        // We now have all the data we need to start making a mix
+        $scheme_id = get_post_meta( $parent->id, 'wcsatt_scheme_id', true);
+
+		$scheme = WCS_ATT_Schemes::get_subscription_scheme_by_id( $scheme_id, WCS_ATT_Schemes::get_cart_subscription_schemes() );
+
+		// Based on scheme create an array of paid orders
+		$paid = array();
+		foreach ( $orders as $order ) {
+			if ( $parent->post_status != 'wc-processing' && $parent->post_status != 'wc-completed' ) {
+				continue;
+			}
+
+			$paid[] = $order;
+		}
+
+		$completed = false;
+		$status = __( 'In Progress', 'wcsatt' );
+		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() ) {
+			$status = __( 'Paid', 'wcsatt' );
+			$completed = true;
+		}
+
+		?>
+		<div class="wcsatt-partial-payment-breakdown wcsatt-partial-payment-breakdown--<?php echo sanitize_title( $status ); ?>">
+			<p class="wcsatt-partial-payment-breakdown__heading">
+				<?php echo sprintf( __( 'This partial payment subscription is "%1$s".', 'wcsatt' ), $status ); ?>
+			</p>
+			<p class="wcsatt-partial-payment-breakdown__item">
+				<?php echo sprintf( __( '%1$s out of %2$s orders have been generated', 'wcsatt' ), (count( $renewals ) + 1 ), $scheme['subscription_length'] ); ?>
+				<strong>|</strong>
+				<?php echo sprintf( __( '%1$s out of %2$s generated orders are paid', 'wcsatt' ), count( $paid ), (count( $renewals ) + 1 ) ); ?>
+			</p>
+		</div>
+		<?php
+	}
 }
 
 WCS_ATT_Admin::init();

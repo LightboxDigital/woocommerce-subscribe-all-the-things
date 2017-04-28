@@ -54,6 +54,9 @@ class WCS_ATT_Cart {
 
 		// Ensure renewals don't include shipping
 		add_filter( 'wcs_renewal_order_items', __CLASS__ . '::remove_renewal_shipping', 10, 3 );
+
+		// Expire fully paid orders
+		add_action( 'woocommerce_payment_complete', __CLASS__ . '::expire_fully_paid_subscription' );
 	}
 
 	/**
@@ -491,6 +494,54 @@ class WCS_ATT_Cart {
 			}
 
 			unset( $items[$key] );
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Expire the subscription of all payments made
+	 * @param  integer $order_id ID of order payment
+	 * @return null
+	 */
+	public static function expire_fully_paid_subscription( $order_id ) {
+		$subscription = wcs_get_subscriptions_for_renewal_order( $order_id );
+
+		if ( ! is_array( $subscription ) ) {
+			return;
+		}
+
+		$subscription = reset( $subscription );
+
+        if ( ! wcs_is_subscription( $subscription ) ) {
+			return;
+		}
+
+		// Now check if all payments have been made
+		// Get parent
+		$parent = $subscription->order;
+		// Get renewals
+		$renewals = $subscription->get_related_orders( 'all', 'renewal' );
+		// Create an orders var too containing renewal and parent
+		$orders = array_merge( array( $parent ), $renewals );
+
+		// Get the scheme object
+        $scheme_id = get_post_meta( $parent->id, 'wcsatt_scheme_id', true);
+		$scheme = WCS_ATT_Schemes::get_subscription_scheme_by_id( $scheme_id, WCS_ATT_Schemes::get_cart_subscription_schemes() );
+
+		// Based on scheme create an array of paid orders
+		$paid = array();
+		foreach ( $orders as $order ) {
+			if ( $parent->post_status != 'wc-processing' && $parent->post_status != 'wc-completed' ) {
+				continue;
+			}
+
+			$paid[] = $order;
+		}
+
+		// If paid orders matches subscription length then expire it
+		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() ) {
+			$subscription->update_status( 'wc-expired', __( 'Final payment taken', 'wcsatt' ) );
 		}
 
 		return $items;
