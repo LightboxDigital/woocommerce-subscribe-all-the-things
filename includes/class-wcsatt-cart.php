@@ -39,6 +39,24 @@ class WCS_ATT_Cart {
 		// Add scheme ID to cart item meta so resubscribe can later fetch it by ID.
 		// Needed because length data is not stored on the subscription.
 		add_action( 'woocommerce_add_subscription_item_meta', __CLASS__ . '::store_cart_item_wcsatt_id', 10, 2 );
+
+		// Store partial payment plan into order
+		add_action( 'woocommerce_thankyou', __CLASS__ . '::store_scheme_id_order' );
+
+		// Auto-complete partia payments
+		add_action( 'woocommerce_payment_complete', __CLASS__ . '::autocomplete_partial_payments' );
+
+		// Override price display
+		add_filter( 'woocommerce_subscriptions_product_price_string', __CLASS__ . '::modify_price_installments', 50, 3 );
+
+		// Filter subtotals to show correct length now initial payment exists in output
+		add_filter( 'woocommerce_cart_subscription_string_details', __CLASS__ . '::modify_subtotal_length' );
+
+		// Ensure renewals don't include shipping
+		add_filter( 'wcs_renewal_order_items', __CLASS__ . '::remove_renewal_shipping', 10, 3 );
+
+		// Expire fully paid orders
+		add_action( 'woocommerce_payment_complete', __CLASS__ . '::expire_fully_paid_subscription' );
 	}
 
 	/**
@@ -175,6 +193,16 @@ class WCS_ATT_Cart {
 			$cart_item[ 'data' ]->subscription_period_interval = $active_subscription_scheme[ 'subscription_period_interval' ];
 			$cart_item[ 'data' ]->subscription_length          = $active_subscription_scheme[ 'subscription_length' ];
 
+			// Modify according to installments
+			$installment = WCS_ATT_Schemes::get_scheme_installments( $active_subscription_scheme['id'], (float)$cart_item[ 'data' ]->price );
+
+			$cart_item[ 'data' ]->price                        = (string)end( $installment );
+			$cart_item[ 'data' ]->subscription_price           = (string)end( $installment );
+			$cart_item[ 'data' ]->subscription_sign_up_fee     = (string)( reset( $installment ) - end( $installment ) );
+			$cart_item[ 'data' ]->initial_amount               = (string) reset( $installment );
+			$cart_item[ 'data' ]->subscription_length          = count( $installment );
+			$cart_item[ 'data' ]->subscription_one_time_shipping = true;
+
 		} else {
 
 			$cart_item[ 'data' ]->is_converted_to_sub = 'no';
@@ -240,6 +268,23 @@ class WCS_ATT_Cart {
 				WC()->cart->cart_contents[ $cart_item_key ] = self::convert_to_sub( $cart_item );
 			}
 		}
+	}
+
+	public static function get_original_cart_total() {
+		$total = 0;
+
+		foreach ( WC()->cart->cart_contents as $cart_item_key => $cart_item ) {
+			if( $cart_item[ 'data' ]->is_converted_to_sub ) {
+				// Get price from prior product
+				$price = $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price;
+				$total += (float) ( $price * $cart_item[ 'quantity' ] );
+			} else {
+				// Get price from current cart item
+				$total += (float) ( $cart_item[ 'line_total' ] );
+			}
+		}
+
+		return $total;
 	}
 
 	/**
@@ -314,6 +359,192 @@ class WCS_ATT_Cart {
 		if ( isset( $cart_item[ 'wccsub_data' ][ 'active_subscription_scheme_id' ] ) ) {
 			wc_add_order_item_meta( $item_id, '_wcsatt_scheme_id', $cart_item[ 'wccsub_data' ][ 'active_subscription_scheme_id' ] );
 		}
+	}
+
+	public static function store_scheme_id_order( $order_id ) {
+		// Check for session scheme
+		if( ! WC()->session->get( 'wcsatt-active-scheme-id' ) ) {
+			return;
+		}
+
+		// Add meta to the order for the scheme id
+		update_post_meta( $order_id, 'wcsatt_scheme_id', WC()->session->get( 'wcsatt-active-scheme-id' ) );
+	}
+
+	public static function autocomplete_partial_payments( $order_id ) {
+		$the_order = wc_get_order( $order_id );
+
+		$scheme = get_post_meta( $order_id, 'wcsatt_scheme_id' );
+
+		$sub = wcs_get_subscriptions_for_renewal_order( $order_id );
+
+		if( !$sub ) {
+			return;
+		}
+
+		if( !reset($sub)->order ) {
+			return;
+		}
+
+		$scheme = get_post_meta( reset($sub)->order->id, 'wcsatt_scheme_id' );
+
+		if( !$scheme ) {
+			return;
+		}
+
+		// If this is a repeat payment, mark it as complete
+		if ( wcs_order_contains_subscription( $the_order, 'renewal' ) ) {
+            $the_order->update_status('completed');
+		}
+	}
+
+	public static function modify_price_installments( $subscription_string, $product, $include = array() ) {
+
+		global $wp_locale;
+
+		if ( ! is_object( $product ) ) {
+			$product = WC_Subscriptions::get_product( $product );
+		}
+
+		if ( ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+			return $subscription_string;
+		}
+
+		if ( ! $product->is_converted_to_sub ) {
+			return $subscription_string;
+		}
+
+		// var_dump($include['price']);
+
+		if ( $include['sign_up_fee'] && WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
+			if ( true === $include['sign_up_fee'] ) {
+				$sign_up_fee = WC_Subscriptions_Product::get_sign_up_fee( $product );
+			} elseif ( false !== $include['sign_up_fee'] ) { // Allow override of product's sign-up fee
+				$sign_up_fee = $include['sign_up_fee'];
+			} else {
+				$sign_up_fee = 0;
+			}
+
+			if ( ! $include['price'] ) {
+				$price = WC_Subscriptions_Product::get_price( $product );
+			} else {
+				$price = $include['price'];
+			}
+
+			// Hacky workaround for WooCommerce passing formatted prices everywhere... -_-
+			$price = (float) preg_replace( '#[^\d.]#', '', $price );
+			$sign_up_fee = (float) preg_replace( '#[^\d.]#', '', $sign_up_fee );
+
+			// Needs to account for quantity ???
+			$sign_up_fee = wc_price( $sign_up_fee + $price );
+
+			$product->subscription_length --;
+			$subscription_string = WC_Subscriptions_Product::get_price_string( $product, array( 'price' => wc_price( $price ), 'sign_up_fee' => false ) );
+			$product->subscription_length ++;
+
+			// translators: 1$: subscription string (e.g. "$15 on March 15th every 3 years for 6 years with 2 months free trial"), 2$: signup fee price (e.g. "and a $30 sign-up fee")
+			$subscription_string = sprintf( __( 'Initial payment of %2$s followed by %1$s', 'woocommerce-subscriptions' ), $subscription_string, $sign_up_fee );
+		}
+
+		return $subscription_string;
+	}
+
+	public static function modify_subtotal_length( $args ) {
+		$args['subscription_length'] --;
+		return $args;
+		// return array(
+		// 	'recurring_amount'      => $recurring_amount,
+		// 	// Schedule details
+		// 	'subscription_interval' => wcs_cart_pluck( $cart, 'subscription_period_interval' ),
+		// 	'subscription_period'   => wcs_cart_pluck( $cart, 'subscription_period', '' ),
+		// 	'subscription_length'   => wcs_cart_pluck( $cart, 'subscription_length' ),
+		// ) ) );
+	}
+
+	/**
+	 * Remove shipping from renewal items
+	 * @param  array  $items        Array of line items.
+	 * @param  bool   $new_order    Whether this is a new order or not.
+	 * @param  object $subscription Subscription object.
+	 * @return array                Modified items array.
+	 */
+	public static function remove_renewal_shipping( $items, $new_order, $subscription ) {
+        $has_scheme = false;
+
+        foreach( $items as $key => $item ) {
+            if ( ! isset( $item['wcsatt_scheme_id'] ) ) {
+                continue;
+            }
+
+            if ( ! $item['wcsatt_scheme_id'] ) {
+                continue;
+            }
+
+            $has_scheme = true;
+        }
+
+        // No partial payment products in here so leave as is
+        if ( ! $has_scheme ) {
+            return $items;
+        }
+
+		foreach( $items as $key => $item ) {
+			if ( $item->type !== 'shipping' ) {
+				continue;
+			}
+
+			unset( $items[$key] );
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Expire the subscription of all payments made
+	 * @param  integer $order_id ID of order payment
+	 * @return null
+	 */
+	public static function expire_fully_paid_subscription( $order_id ) {
+		$subscription = wcs_get_subscriptions_for_renewal_order( $order_id );
+
+		if ( ! is_array( $subscription ) ) {
+			return;
+		}
+
+		$subscription = reset( $subscription );
+
+        if ( ! wcs_is_subscription( $subscription ) ) {
+			return;
+		}
+
+		// Now check if all payments have been made
+		// Get parent
+		$parent = $subscription->order;
+		// Get renewals
+		$renewals = $subscription->get_related_orders( 'all', 'renewal' );
+		// Create an orders var too containing renewal and parent
+		$orders = array_merge( array( $parent ), $renewals );
+
+		// Get the scheme object
+        $scheme_id = get_post_meta( $parent->id, 'wcsatt_scheme_id', true);
+		$scheme = WCS_ATT_Schemes::get_subscription_scheme_by_id( $scheme_id, WCS_ATT_Schemes::get_cart_subscription_schemes() );
+
+		// Based on scheme create an array of paid orders
+		$paid = array();
+		foreach ( $orders as $order ) {
+			if ( $parent->post_status != 'wc-processing' && $parent->post_status != 'wc-completed' ) {
+				continue;
+			}
+
+			$paid[] = $order;
+		}
+
+		// If paid orders matches subscription length then expire it
+		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() ) {
+			$subscription->update_status( 'wc-expired', __( 'Final payment taken', 'wcsatt' ) );
+		}
+
+		return $items;
 	}
 }
 

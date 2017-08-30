@@ -373,8 +373,8 @@ class WCS_ATT_Display {
 		if ( $subscription_schemes = WCS_ATT_Schemes::get_cart_subscription_schemes() ) {
 
 			?>
-			<h2><?php _e( 'Cart Subscription', WCS_ATT::TEXT_DOMAIN ); ?></h2>
-			<p><?php _e( 'Interested in subscribing to these items?', WCS_ATT::TEXT_DOMAIN ); ?></p>
+			<h2><?php _e( 'Payment Plan', WCS_ATT::TEXT_DOMAIN ); ?></h2>
+			<p><?php _e( 'Interested in spreading the cost of these items?', WCS_ATT::TEXT_DOMAIN ); ?></p>
 			<ul class="wcsatt-options-cart"><?php
 
 				$options                       = array();
@@ -385,22 +385,35 @@ class WCS_ATT_Display {
 					'selected'    => $active_subscription_scheme_id === '0',
 				);
 
+				// Calculate price from original product objects
+				// $total = WCS_ATT_Cart::get_original_cart_total();
+
 				foreach ( $subscription_schemes as $subscription_scheme ) {
 
 					$subscription_scheme_id = $subscription_scheme[ 'id' ];
+					$installments = WCS_ATT_Schemes::get_cart_scheme_installments( $subscription_scheme_id );
 
-					$dummy_product                               = new WC_Product( '1' );
+					$dummy_product                               = new WC_Product_Subscription( '1' );
+					$dummy_product->product_type                 = 'subscription';
 					$dummy_product->is_converted_to_sub          = 'yes';
+					$dummy_product->subscription_price           = end( $installments );
 					$dummy_product->subscription_period          = $subscription_scheme[ 'subscription_period' ];
 					$dummy_product->subscription_period_interval = $subscription_scheme[ 'subscription_period_interval' ];
 					$dummy_product->subscription_length          = $subscription_scheme[ 'subscription_length' ];
 
-					$sub_suffix  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => '', 'subscription_price' => false ) );
+					if ( $installments[1] !== $installments[2] ) {
+						$dummy_product->subscription_sign_up_fee = ( reset( $installments ) - end( $installments ) );
+					}
+
+					// var_dump($dummy_product);
+
+					$desc  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => wc_price( end( $installments ) ) ) );
 
 					$options[ $subscription_scheme[ 'id' ] ] = array(
-						'description' => sprintf( __( 'Yes, %s.', 'cart subscription selection - positive response', WCS_ATT::TEXT_DOMAIN ), $sub_suffix ),
+						'description' => $desc,
 						'selected'    => $active_subscription_scheme_id === $subscription_scheme_id,
 					);
+
 				}
 
 				foreach ( $options as $option_id => $option ) {
@@ -556,7 +569,6 @@ class WCS_ATT_Display {
 
 		return apply_filters( 'wcsatt_add_to_cart_text', $button_text );
 	}
-
 }
 
 WCS_ATT_Display::init();

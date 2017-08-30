@@ -297,21 +297,141 @@ class WCS_ATT_Schemes {
 			$cart_level_schemes_keys[] = $cart_level_scheme[ 'id' ];
 		}
 
-		foreach ( WC()->cart->cart_contents as $cart_item ) {
+		if ( ! is_admin() ) {
+			foreach ( WC()->cart->cart_contents as $cart_item ) {
 
-			if ( ! WCS_ATT_Cart::is_supported_product_type( $cart_item ) ) {
-				return false;
-			}
+				if ( ! WCS_ATT_Cart::is_supported_product_type( $cart_item ) ) {
+					return false;
+				}
 
-			if ( $cart_item_level_schemes = self::get_subscription_schemes( $cart_item, 'cart-item' ) ) {
-				return false;
-			}
+				if ( $cart_item_level_schemes = self::get_subscription_schemes( $cart_item, 'cart-item' ) ) {
+					return false;
+				}
 
-			if ( WC_Subscriptions_Product::is_subscription( $cart_item[ 'product_id' ] ) ) {
-				return false;
+				if ( WC_Subscriptions_Product::is_subscription( $cart_item[ 'product_id' ] ) ) {
+					return false;
+				}
 			}
 		}
 
 		return $cart_level_schemes;
+	}
+
+	/**
+	 * Returns array of installments for scheme against given amount.
+	 * @param  integer $scheme_id ID of the scheme.
+	 * @param  float   $amount    Amount to split.
+	 * @return array|boolean
+	 */
+    public static function get_scheme_installments( $scheme_id, $amount ) {
+		$scheme = self::get_subscription_scheme_by_id( $scheme_id, self::get_cart_subscription_schemes() );
+
+		if( !$scheme ) {
+			return false;
+		}
+
+		$io = $i = $scheme['subscription_length'];
+
+        // Start a reminaing tally of cost breakdown.
+        $remaining = $amount;
+
+        // Set up our initial and installment values.
+        $initial = $installments = 0;
+
+        // Build a payment array now.
+        $payments = array();
+
+        // Work out instalments without deposit first.
+        $installments = round( ($remaining / ($i)), 2, PHP_ROUND_HALF_DOWN );
+        $remaining = $remaining - ($installments * $i);
+
+        // If there is a minimum initial payment percentage we need to work things slightly differently.
+        // if ( $settings['initial_payment_percentage'] > 0 ) {
+        //     $initial = round( ($total * ($settings['initial_payment_percentage'] / 100)), 2, PHP_ROUND_HALF_DOWN );
+		//
+        //     // If the initial payment calculated is greater than installment
+        //     // amount then recalculate installments.
+        //     if ( $initial > $installments ) {
+        //         // Reset remaining value.
+        //         $remaining = $amount - $initial;
+        //         // Recalculate installments with one less installment due to initial.
+        //         $i = $i - 1;
+        //         $installments = round( ($remaining / $i), 2, PHP_ROUND_HALF_DOWN );
+        //         // Recalculate remaining amount.
+        //         $remaining = $remaining - ($installments * $i);
+		//
+        //         // As we have an initial value begin the payments array.
+        //         $payments[] = $initial;
+        //     }
+        // }
+
+        // Loop over installments and add to array.
+        for ( $i2 = 0; $i2 < $i; $i2++ ) {
+            $payments[] = $installments;
+        }
+
+        // If their is an amount remaining, take it from first payment.
+        if ( 0 !== $remaining ) {
+            $payments[0] = $payments[0] + $remaining;
+            $remaining = 0;
+        }
+
+		// Make sure first amount is greater than second
+		if( $payments[0] < $payments[1] ) {
+			$reduction = 0;
+			foreach ( $payments as $key => &$payment ) {
+				$reduction += 0.01;
+				$payment -= 0.01;
+			}
+			$payments[0] += $reduction;
+		}
+
+        // Fix payment array index to represent payment installment.
+        $new_payments = array();
+        foreach ( $payments as $key => $payment ) {
+            $new_payments[ $key + 1 ] = $payment;
+        }
+        $payments = $new_payments;
+
+        return $payments;
+	}
+
+	/**
+	 * Returns array of installments for scheme against the cart.
+	 * @param  integer $scheme_id ID of the scheme.
+	 * @param  float   $amount    Amount to split.
+	 * @return array|boolean
+	 */
+    public static function get_cart_scheme_installments( $scheme_id, $cart_item_key = false ) {
+		$cart_installments = array();
+
+		foreach ( WC()->cart->cart_contents as $cart_item_key => $cart_item ) {
+			// Get price from  product
+			$price = $cart_item[ 'data' ]->sale_price ? $cart_item[ 'data' ]->sale_price : $cart_item[ 'data' ]->regular_price;
+
+			$cart_installments[ $cart_item_key ] = self::get_scheme_installments( $scheme_id, $price );
+
+			foreach( $cart_installments[ $cart_item_key ] as &$installment ) {
+				$installment = $installment * $cart_item['quantity'];
+			}
+		}
+
+		if ( $cart_item_key && isset( $cart_installments[ $cart_item_key ] ) ) {
+			return $cart_installments[ $cart_item_key ];
+		}
+
+		$installments_out = array();
+
+		foreach ( $cart_installments as $cart_key => $item ) {
+			foreach( $item as $key => $item_installment ) {
+				if ( !isset( $installments_out[ $key ] ) ) {
+					$installments_out[ $key ] = 0;
+				}
+
+				$installments_out[ $key ] += $item_installment;
+			}
+		}
+
+		return $installments_out;
 	}
 }
