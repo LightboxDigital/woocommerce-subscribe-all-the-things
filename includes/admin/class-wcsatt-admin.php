@@ -57,6 +57,8 @@ class WCS_ATT_Admin {
         add_action( 'manage_shop_order_posts_custom_column', __CLASS__ . '::order_column_payment', 50 );
 
         add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_partial_payment_breakdown', 50 );
+
+		add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_outstanding_payment', 10 );
 	}
 
 	/**
@@ -730,6 +732,8 @@ class WCS_ATT_Admin {
 			$subscription = reset(wcs_get_subscriptions_for_order( $post->ID, array( 'order_type' => array( 'parent', 'renewal' ) ) ));
         }
 
+		//var_dump($subscription);
+
 		if ( ! wcs_is_subscription( $subscription ) ) {
 			return false;
 		}
@@ -775,6 +779,62 @@ class WCS_ATT_Admin {
 			</p>
 		</div>
 		<?php
+	}
+
+	public static function related_orders_outstanding_payment( $post ) {
+		$subscription = $parent = $order = false;
+		$renewals = array();
+		$orderIds = array();
+
+        if ( wcs_is_subscription( $post->ID ) ) {
+			// Store subscription
+			$subscription = wcs_get_subscription( $post->ID );
+        } else {
+			$subscription = reset(wcs_get_subscriptions_for_order( $post->ID, array( 'order_type' => array( 'parent', 'renewal' ) ) ));
+        }
+
+		//var_dump($subscription);
+
+		if ( ! wcs_is_subscription( $subscription ) ) {
+			return false;
+		}
+
+		// Get parent
+		$parent = $subscription->order;
+		// Get renewals
+		$renewals = $subscription->get_related_orders( 'all', 'renewal' );
+        // We now have all the data we need to start making a mix
+        $scheme_id = get_post_meta( $parent->id, 'wcsatt_scheme_id', true);
+		$scheme = WCS_ATT_Schemes::get_subscription_scheme_by_id( $scheme_id, WCS_ATT_Schemes::get_cart_subscription_schemes() );
+		// Create an orders var too containing renewal and parent
+		$orders = array_merge( array( $parent ), $renewals );
+
+		$paid = array();
+		foreach ( $orders as $order ) {
+
+			$paid[] = $order->get_total();
+		}
+		// Calculate total paid so far
+		$orderPaid = array_sum( $paid );
+		// Get unique paid values
+		$uniqueValues = array_unique( $paid );
+		// Distinguish the first payment from the other values, as well as retaining the subscripting cost. 
+		$firstInstallment = $uniqueValues[0];
+		$recursiveInstallment = $uniqueValues[1];
+		// Count number of installments
+		$installmentCount = $scheme['subscription_length'] - 1;
+		var_dump($installmentCount);
+		// Calculate the total order
+		$orderTotal = ( $recursiveInstallment * $installmentCount ) + $firstInstallment;
+		var_dump($orderTotal);
+		var_dump($orderPaid);
+		// Calculate outstanding value
+		if ( $orderTotal != $orderPaid ) {
+			$outstandingValue = $orderTotal - $orderPaid;
+		} else {
+			$outstandingValue = 'None';
+		}
+		var_dump($outstandingValue);
 	}
 }
 
