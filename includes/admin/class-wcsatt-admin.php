@@ -56,9 +56,9 @@ class WCS_ATT_Admin {
          */
         add_action( 'manage_shop_order_posts_custom_column', __CLASS__ . '::order_column_payment', 50 );
 
-        add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_partial_payment_breakdown', 50 );
-
-		// add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_outstanding_payment', 10 );
+		add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_partial_payment_breakdown', 50 );
+		
+		add_action('save_post', __CLASS__. '::close_subscription', 100);
 	}
 
 	/**
@@ -773,8 +773,6 @@ class WCS_ATT_Admin {
 		// Calculate the total order
 		$orderTotal = ( $recursiveInstallment * $installmentCount ) + $firstInstallment;
 		// Calculate outstanding value
-		var_dump($orderTotal, $orderPaid);
-		var_dump($orderTotal == $orderPaid);
 		if ( (int) $orderTotal == (int) $orderPaid ) {
 			$outstandingValue = 0;
 		} else {
@@ -783,26 +781,65 @@ class WCS_ATT_Admin {
 
 		$completed = false;
 		$status = __( 'In Progress', 'wcsatt' );
-		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() ) {
+		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() || $subscription->post_status == 'wc-expired' ) {
 			$status = __( 'Paid', 'wcsatt' );
 			$completed = true;
 		}
 
 		?>
 		<div class="wcsatt-partial-payment-breakdown wcsatt-partial-payment-breakdown--<?php echo sanitize_title( $status ); ?>">
-			<p class="wcsatt-partial-payment-breakdown__heading">
-				<?php echo sprintf( __( 'This partial payment subscription is "%1$s".', 'wcsatt' ), $status ); ?>
-			</p>
-			<p class="wcsatt-partial-payment-breakdown__item">
-			<?php echo sprintf( __( '£%1$s out of £%2$s has been paid, outstanding balance is £%3$s', 'wcsatt' ), $orderPaid, $orderTotal, $outstandingValue ); ?>
-			</p>
-			<p class="wcsatt-partial-payment-breakdown__item">
-				<?php echo sprintf( __( '%1$s out of %2$s orders have been generated', 'wcsatt' ), (count( $renewals ) + 1 ), $scheme['subscription_length'] ); ?>
-				<strong>|</strong>
-				<?php echo sprintf( __( '%1$s out of %2$s generated orders are paid', 'wcsatt' ), count( $paid ), (count( $renewals ) + 1 ) ); ?>
-			</p>
+			<div class="grid">
+				<div class="grid__cell grid__cell--one-half">
+					<p class="wcsatt-partial-payment-breakdown__heading">
+						<?php echo sprintf( __( 'This partial payment subscription is "%1$s".', 'wcsatt' ), $status ); ?>
+					</p>
+					<p class="wcsatt-partial-payment-breakdown__item">
+					<?php echo sprintf( __( '£%1$s out of £%2$s has been paid, outstanding balance is £%3$s', 'wcsatt' ), $orderPaid, $orderTotal, $outstandingValue ); ?>
+					</p>
+					<p class="wcsatt-partial-payment-breakdown__item">
+						<?php echo sprintf( __( '%1$s out of %2$s orders have been generated', 'wcsatt' ), (count( $renewals ) + 1 ), $scheme['subscription_length'] ); ?>
+						<strong>|</strong>
+						<?php echo sprintf( __( '%1$s out of %2$s generated orders are paid', 'wcsatt' ), count( $paid ), (count( $renewals ) + 1 ) ); ?>
+					</p>
+				</div>
+				<div class="grid__cell grid__cell--one-half">
+					<?php if ( sanitize_title( $status ) == 'in-progress' ) : ?>
+						<div class="wcsatt-partial-close-subscription">
+							<button type="submit" name="close_subscription" value="true" class="wcsatt-partial-close-subscription__button wp-core-ui button"><?php _e( 'Manually Close Subscription', 'lightbox' ); ?></button>
+						</div>
+					<?php endif; ?>
+				</div>
+			</div>
 		</div>
 		<?php
+	}
+
+	public static function close_subscription( $post ) {
+		if ( $_POST['close_subscription'] ) {
+
+			$subscription = $parent = $order = false;
+			$renewals = array();
+	
+			if ( wcs_is_subscription( $post ) ) {
+				// Store subscription
+				$subscription = wcs_get_subscription( $post );
+			} else {
+				$subscription = reset(wcs_get_subscriptions_for_order( $post, array( 'order_type' => array( 'parent', 'renewal' ) ) ));
+			}
+			if ( ! wcs_is_subscription( $subscription ) ) {
+				return false;
+			}
+
+			$parent = $subscription->order;
+			// Update parent order to completed
+			if ( $parent ) {
+				$parent->update_status('wc-completed');
+			}
+			// Updated subscription to expired
+			if ( $subscription ) {
+				$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
+			}
+		}
 	}
 }
 
