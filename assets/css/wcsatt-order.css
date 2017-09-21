@@ -40,3 +40,14 @@
 	font-size: 18px;
 	font-weight: bold;
 }
+.wcsatt-partial-close-subscription {
+	padding: 20px;
+	text-align: right;
+}
+.grid {
+	display: flex;
+	align-items: center;
+}
+.grid__cell.grid__cell--one-half {
+	width: 50%;
+}
