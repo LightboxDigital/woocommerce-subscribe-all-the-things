@@ -136,6 +136,7 @@ class WCS_ATT {
 	public function admin_includes() {
 
 		require_once( 'includes/admin/class-wcsatt-admin.php' );
+		require_once( 'includes/admin/clone-order.php' );
 	}
 
 	/**
