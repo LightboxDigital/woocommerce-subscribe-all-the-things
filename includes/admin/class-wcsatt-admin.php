@@ -870,15 +870,20 @@ class WCS_ATT_Admin {
 				$outstandingValue = $orderTotal - $orderPaid;
 			}
 
-			$outstanding = $scheme['subscription_length'] - (count( $renewals ) + 1 );
+			// Get the original totall value
+			$ototal = $subscription->get_total();
 
-			if ( $outstanding ) {
-				for ( $i = 0; $i < $outstanding; $i++ ) {
-					$renewal_order = wcs_create_renewal_order( $subscription );
-					$renewal_order->payment_complete();
-				}
+			// If the new oustanding value is greater than 0, the total becomes the outstanding
+			if ( $outstandingValue > 0 ) {
+				$subscription->set_total( $outstandingValue );
 			}
-			die;
+
+			// Add an extra renewal order with the total of the oustanding balance
+			$renewal_order = wcs_create_renewal_order( $subscription );
+			$renewal_order->payment_complete();
+
+			// Set the total back to the original price in case it is needed again
+			$subscription->set_total( $ototal );
 
 			$parent = $subscription->order;
 			// Update parent order to completed
