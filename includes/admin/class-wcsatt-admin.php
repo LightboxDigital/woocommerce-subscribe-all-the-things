@@ -832,7 +832,7 @@ class WCS_ATT_Admin {
 			$parent = $subscription->order;
 			// Get renewals
 			$renewals = $subscription->get_related_orders( 'all', 'renewal' );
-			var_dump( $renewals );
+
 			// Create an orders var too containing renewal and parent
 			$orders = array_merge( array( $parent ), $renewals );
 
@@ -872,13 +872,10 @@ class WCS_ATT_Admin {
 
 			$outstanding = $scheme['subscription_length'] - (count( $renewals ) + 1 );
 
-			var_dump( $outstanding );
 			if ( $outstanding ) {
 				for ( $i = 0; $i < $outstanding; $i++ ) {
 					$renewal_order = wcs_create_renewal_order( $subscription );
-					var_dump( $renewal_order );
 					$renewal_order->payment_complete();
-					var_dump( $renewal_order );
 				}
 			}
 			die;
@@ -893,32 +890,6 @@ class WCS_ATT_Admin {
 				$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
 			}
 		}
-	}
-
-	add_action( 'woocommerce_order_action_wcs_manually_complete', 'manually_complete_subscription_order');
-
-	function manually_complete_subscription_order($order) {
-
-	    // Default subscription status to on-hold
-	    $order->update_status( 'on-hold' );
-
-	    // generate a renewal order as normal
-	    $renewal_order = wcs_create_renewal_order( $order );
-
-	    // If it's not manual then just log the payment method.
-	    // Probably useless in this case really
-	    if ( ! $order->is_manual() ) {
-	        $renewal_order->set_payment_method( $order->payment_gateway );
-
-	    }
-
-	    // Update the renewal order status to completed
-	    // This also makes the subscription active
-	    $renewal_order->update_status('completed');
-
-	    // Add a custom note for logging
-	    $order->add_order_note( __( 'Create and complete renewal order requested by admin action.', 'woocommerce-subscriptions' ), false, true );
-
 	}
 }
 
