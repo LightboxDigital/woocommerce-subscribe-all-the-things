@@ -57,7 +57,7 @@ class WCS_ATT_Admin {
         add_action( 'manage_shop_order_posts_custom_column', __CLASS__ . '::order_column_payment', 50 );
 
 		add_action( 'woocommerce_subscriptions_related_orders_meta_box_rows', __CLASS__ . '::related_orders_partial_payment_breakdown', 50 );
-		
+
 		add_action('save_post', __CLASS__. '::close_subscription', 100);
 	}
 
@@ -341,7 +341,6 @@ class WCS_ATT_Admin {
 			$subscription_period_interval = '';
 			$subscription_length          = '';
 		}
-
 
 		// Subscription Price, Interval and Period
 		?><p class="form-field _satt_subscription_details">
@@ -763,7 +762,7 @@ class WCS_ATT_Admin {
 		$orderPaid = array_sum( $paidValues );
 		// Get unique paid values
 		$uniqueValues = array_unique( $paidValues );
-		// Distinguish the first payment from the other values, as well as retaining the subscripting cost. 
+		// Distinguish the first payment from the other values, as well as retaining the subscripting cost.
 		$firstInstallment = $uniqueValues[0];
 		$recursiveInstallment = $uniqueValues[1];
 		// Count number of installments
@@ -818,7 +817,7 @@ class WCS_ATT_Admin {
 
 			$subscription = $parent = $order = false;
 			$renewals = array();
-	
+
 			if ( wcs_is_subscription( $post ) ) {
 				// Store subscription
 				$subscription = wcs_get_subscription( $post );
@@ -829,22 +828,19 @@ class WCS_ATT_Admin {
 				return false;
 			}
 
-			if ( ! wcs_is_subscription( $subscription ) ) {
-				return false;
-			}
-	
 			// Get parent
 			$parent = $subscription->order;
 			// Get renewals
 			$renewals = $subscription->get_related_orders( 'all', 'renewal' );
+			var_dump( $renewals );
 			// Create an orders var too containing renewal and parent
 			$orders = array_merge( array( $parent ), $renewals );
-	
+
 			// We now have all the data we need to start making a mix
 			$scheme_id = get_post_meta( $parent->id, 'wcsatt_scheme_id', true);
-	
+
 			$scheme = WCS_ATT_Schemes::get_subscription_scheme_by_id( $scheme_id, WCS_ATT_Schemes::get_cart_subscription_schemes() );
-	
+
 			// Based on scheme create an array of paid orders
 			$paid = array();
 			$paidValues = array();
@@ -855,12 +851,12 @@ class WCS_ATT_Admin {
 				$paid[] = $order;
 				$paidValues[] = $order->get_total();
 			}
-	
+
 			// Calculate total paid so far
 			$orderPaid = array_sum( $paidValues );
 			// Get unique paid values
 			$uniqueValues = array_unique( $paidValues );
-			// Distinguish the first payment from the other values, as well as retaining the subscripting cost. 
+			// Distinguish the first payment from the other values, as well as retaining the subscripting cost.
 			$firstInstallment = $uniqueValues[0];
 			$recursiveInstallment = $uniqueValues[1];
 			// Count number of installments
@@ -874,8 +870,18 @@ class WCS_ATT_Admin {
 				$outstandingValue = $orderTotal - $orderPaid;
 			}
 
-			$clone = new LBCloneOrder;
-			$clone->clone_order( $post, $subscription->order->post->post_author, $outstandingValue );
+			$outstanding = $scheme['subscription_length'] - (count( $renewals ) + 1 );
+
+			var_dump( $outstanding );
+			if ( $outstanding ) {
+				for ( $i = 0; $i < $outstanding; $i++ ) {
+					$renewal_order = wcs_create_renewal_order( $subscription );
+					var_dump( $renewal_order );
+					$renewal_order->payment_complete();
+					var_dump( $renewal_order );
+				}
+			}
+			die;
 
 			$parent = $subscription->order;
 			// Update parent order to completed
@@ -887,6 +893,32 @@ class WCS_ATT_Admin {
 				$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
 			}
 		}
+	}
+
+	add_action( 'woocommerce_order_action_wcs_manually_complete', 'manually_complete_subscription_order');
+
+	function manually_complete_subscription_order($order) {
+
+	    // Default subscription status to on-hold
+	    $order->update_status( 'on-hold' );
+
+	    // generate a renewal order as normal
+	    $renewal_order = wcs_create_renewal_order( $order );
+
+	    // If it's not manual then just log the payment method.
+	    // Probably useless in this case really
+	    if ( ! $order->is_manual() ) {
+	        $renewal_order->set_payment_method( $order->payment_gateway );
+
+	    }
+
+	    // Update the renewal order status to completed
+	    // This also makes the subscription active
+	    $renewal_order->update_status('completed');
+
+	    // Add a custom note for logging
+	    $order->add_order_note( __( 'Create and complete renewal order requested by admin action.', 'woocommerce-subscriptions' ), false, true );
+
 	}
 }
 
