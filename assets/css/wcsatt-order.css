@@ -51,3 +51,10 @@
 .grid__cell.grid__cell--one-half {
 	width: 50%;
 }
+.grid__cell.grid__cell--two-thirds {
+	width: 66.6666%;
+}
+.grid__cell.grid__cell--one-third {
+	width: 33.3333%;
+}
+.text-align-right {text-align: right;}
