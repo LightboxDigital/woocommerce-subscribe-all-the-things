@@ -786,7 +786,7 @@ class WCS_ATT_Admin {
 		?>
 		<div class="wcsatt-partial-payment-breakdown wcsatt-partial-payment-breakdown--<?php echo sanitize_title( $status ); ?>">
 			<div class="grid">
-				<div class="grid__cell grid__cell--one-half">
+				<div class="grid__cell grid__cell--two-thirds">
 					<p class="wcsatt-partial-payment-breakdown__heading">
 						<?php echo sprintf( __( 'This partial payment subscription is "%1$s".', 'wcsatt' ), $status ); ?>
 					</p>
@@ -799,8 +799,8 @@ class WCS_ATT_Admin {
 						<?php echo sprintf( __( '%1$s out of %2$s generated orders are paid', 'wcsatt' ), count( $paid ), (count( $renewals ) + 1 ) ); ?>
 					</p>
 				</div>
-				<div class="grid__cell grid__cell--one-half">
-					<?php if ( sanitize_title( $status ) == 'in-progress' ) : ?>
+				<div class="grid__cell grid__cell--one-third text-align-right">
+					<?php if ( $subscription->post_status == 'wc-active' || $subscription->post_status == 'wc-on-hold' ) : ?>
 						<div class="wcsatt-partial-close-subscription">
 							<button type="submit" name="close_subscription" value="true" class="wcsatt-partial-close-subscription__button wp-core-ui button"><?php _e( 'Manually Close Subscription', 'lightbox' ); ?></button>
 						</div>
@@ -875,24 +875,28 @@ class WCS_ATT_Admin {
 
 			// If the new oustanding value is greater than 0, the total becomes the outstanding
 			if ( $outstandingValue > 0 ) {
+				
 				$subscription->set_total( $outstandingValue );
-			}
+				
+				// Add an extra renewal order with the total of the oustanding balance
+				var_dump(wcs_create_renewal_order(), wcs_create_renewal_order($subscription)); die;
+				$renewal_order = wcs_create_renewal_order( $parent );
+				$renewal_order->payment_complete();
+	
+				// Set the total back to the original price in case it is needed again
+				$subscription->set_total( $ototal );
+	
+				$parent = $subscription->order;
+				// Update parent order to completed
+				if ( $parent ) {
+					$parent->update_status('wc-completed');
+				}
+				// Updated subscription to expired
+				if ( $subscription ) {
+					$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
+				}
 
-			// Add an extra renewal order with the total of the oustanding balance
-			$renewal_order = wcs_create_renewal_order( $subscription );
-			$renewal_order->payment_complete();
-
-			// Set the total back to the original price in case it is needed again
-			$subscription->set_total( $ototal );
-
-			$parent = $subscription->order;
-			// Update parent order to completed
-			if ( $parent ) {
-				$parent->update_status('wc-completed');
-			}
-			// Updated subscription to expired
-			if ( $subscription ) {
-				$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
+				return true;
 			}
 		}
 	}
