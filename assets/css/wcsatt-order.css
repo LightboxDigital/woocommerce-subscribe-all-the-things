@@ -36,6 +36,10 @@
 	background: #73a724;
 }
 
+.wcsatt-partial-payment-breakdown--expired-without-payment-completion {
+	background: red;
+}
+
 .wcsatt-partial-payment-breakdown__heading {
 	font-size: 18px;
 	font-weight: bold;

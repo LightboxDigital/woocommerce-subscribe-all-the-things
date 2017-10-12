@@ -735,8 +735,10 @@ class WCS_ATT_Admin {
 			return false;
 		}
 
+		
 		// Get parent
 		$parent = $subscription->order;
+
 		// Get renewals
 		$renewals = $subscription->get_related_orders( 'all', 'renewal' );
 		// Create an orders var too containing renewal and parent
@@ -758,6 +760,8 @@ class WCS_ATT_Admin {
 			$paidValues[] = $order->get_total();
 		}
 
+
+
 		// Calculate total paid so far
 		$orderPaid = array_sum( $paidValues );
 		// Get unique paid values
@@ -778,10 +782,16 @@ class WCS_ATT_Admin {
 
 		$completed = false;
 		$status = __( 'In Progress', 'wcsatt' );
-		if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() || $subscription->post_status == 'wc-expired' ) {
-			$status = __( 'Paid', 'wcsatt' );
-			$completed = true;
+		if ( $post->post_status == 'wc-completed' && $outstandingValue !== 0 ) {
+			$status = (__('Expired without payment completion'));
+		} else {
+
+			if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() || $subscription->post_status == 'wc-expired' ) {
+				$status = __( 'Paid', 'wcsatt' );
+				$completed = true;
+			}
 		}
+
 
 		?>
 		<div class="wcsatt-partial-payment-breakdown wcsatt-partial-payment-breakdown--<?php echo sanitize_title( $status ); ?>">
@@ -800,7 +810,7 @@ class WCS_ATT_Admin {
 					</p>
 				</div>
 				<div class="grid__cell grid__cell--one-third text-align-right">
-					<?php if ( $subscription->post_status == 'wc-active' || $subscription->post_status == 'wc-on-hold' ) : ?>
+					<?php if ( ! $post->post_status == 'wc-completed' && $subscription->post_status == 'wc-active' || $subscription->post_status == 'wc-on-hold' ) : ?>
 						<div class="wcsatt-partial-close-subscription">
 							<button type="submit" name="close_subscription" value="true" class="wcsatt-partial-close-subscription__button wp-core-ui button"><?php _e( 'Manually Close Subscription', 'lightbox' ); ?></button>
 						</div>
@@ -813,7 +823,9 @@ class WCS_ATT_Admin {
 
 	public static function close_subscription( $post ) {
 
-		if ( $_POST['close_subscription'] ) {
+		$initOrder = wc_get_order( $post );
+
+		if ( $_POST['close_subscription'] && $initOrder->post->post_status !== 'wc-completed' ) {
 
 			$subscription = $parent = $order = false;
 			$renewals = array();
@@ -877,10 +889,14 @@ class WCS_ATT_Admin {
 			if ( $outstandingValue > 0 ) {
 				
 				$subscription->set_total( $outstandingValue );
+
+				$subscription->update_status('wc-on-hold');
+				$parent->update_status('wc-on-hold');
 				
 				// Add an extra renewal order with the total of the oustanding balance
-				var_dump(wcs_create_renewal_order(), wcs_create_renewal_order($subscription)); die;
-				$renewal_order = wcs_create_renewal_order( $parent );
+				// var_dump(wcs_create_renewal_order(), wcs_create_renewal_order($subscription)); die;
+				$renewal_order = wcs_create_renewal_order( $subscription );
+
 				$renewal_order->payment_complete();
 	
 				// Set the total back to the original price in case it is needed again
@@ -896,9 +912,11 @@ class WCS_ATT_Admin {
 					$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
 				}
 
-				return true;
 			}
+
+			return true;
 		}
+		return false;
 	}
 }
 
