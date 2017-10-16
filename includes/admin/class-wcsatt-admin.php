@@ -761,40 +761,35 @@ class WCS_ATT_Admin {
 			$paidValues[] = $order->get_total();
 		}
 
-
 		// Calculate total paid so far
 		$orderPaid = array_sum( $paidValues );
 		// Get unique paid values
 		$uniqueValues = array_unique( $paidValues );
 		// Distinguish the first payment from the other values, as well as retaining the subscripting cost.
 		$firstInstallment = $uniqueValues[0];
-		$recursiveInstallment = $uniqueValues[1];
+		$recursiveInstallment = end($uniqueValues);
 		// Count number of installments
 		$installmentCount = $scheme['subscription_length'] - 1;
 		// Calculate the total order
-		$orderTotal = ( $recursiveInstallment * $installmentCount ) + $firstInstallment;
+		$orderTotal = ( $recursiveInstallment * $installmentCount );
 
 		// Calculate outstanding value
-		if ( (int) $orderTotal == (int) $orderPaid || $firstInstallment >= ($orderTotal - $orderPaid) ) {
+		if ( (int) ($orderTotal + $firstInstallment) == (int) $orderPaid ) {
 			$outstandingValue = 0;
-			$orderPaid = $orderPaid + $firstInstallment;
-			$orderTotal = ( $paidValues[1] * $installmentCount ) + $firstInstallment;
+			$orderTotal = $orderTotal + $firstInstallment;
 		} else {
 			$outstandingValue = $orderTotal - $orderPaid;
 		}
 
 		$completed = false;
 		$status = __( 'In Progress', 'wcsatt' );
-		if ( $post->post_status == 'wc-completed' && $outstandingValue !== 0 ) {
+
+		if ( $orderTotal + $firstInstallment == $orderPaid || (int) $orderTotal == (int) $orderPaid ) {
+			$status = __( 'Paid', 'wcsatt' );
+			$completed = true;
+		} else if ( $post->post_status == 'wc-completed' && $outstandingValue ) {
 			$status = (__('Expired without payment completion'));
-		} else {
-
-			if ( count( $paid ) == $scheme['subscription_length'] && ! $subscription->needs_payment() || $subscription->post_status == 'wc-expired' ) {
-				$status = __( 'Paid', 'wcsatt' );
-				$completed = true;
-			}
 		}
-
 
 		?>
 		<div class="wcsatt-partial-payment-breakdown wcsatt-partial-payment-breakdown--<?php echo sanitize_title( $status ); ?>">
@@ -804,7 +799,7 @@ class WCS_ATT_Admin {
 						<?php echo sprintf( __( 'This partial payment subscription is "%1$s".', 'wcsatt' ), $status ); ?>
 					</p>
 					<p class="wcsatt-partial-payment-breakdown__item">
-					<?php echo sprintf( __( '£%1$s out of £%2$s has been paid, outstanding balance is £%3$s', 'wcsatt' ), $orderPaid, $orderTotal, $outstandingValue ); ?>
+					<?php echo sprintf( __( '£%1$s out of £%2$s has been paid, outstanding balance is £%3$s', 'wcsatt' ), $orderPaid, $orderTotal, $outstandingValue ?  $outstandingValue : 0 ); ?>
 					</p>
 					<p class="wcsatt-partial-payment-breakdown__item">
 						<?php echo sprintf( __( '%1$s out of %2$s orders have been generated', 'wcsatt' ), (count( $renewals ) + 1 ), $scheme['subscription_length'] ); ?>
@@ -813,10 +808,12 @@ class WCS_ATT_Admin {
 					</p>
 				</div>
 				<div class="grid__cell grid__cell--one-third text-align-right">
-					<?php if ( $post->post_status !== 'wc-completed' && $subscription->post_status == 'wc-active' || $post->post_status == 'wc-completed' && $outstandingValue == 0  ) : ?>
-						<div class="wcsatt-partial-close-subscription">
-							<button type="submit" name="close_subscription" value="true" class="wcsatt-partial-close-subscription__button wp-core-ui button"><?php _e( 'Manually Close Subscription', 'lightbox' ); ?></button>
-						</div>
+					<?php if ( (int) $orderTotal !== (int) $orderPaid ) : ?>
+						<?php if ( $post->post_status !== 'wc-completed' && $parent->post_status == 'wc-processing' || $post->post_status == 'wc-pending' ) : ?>
+							<div class="wcsatt-partial-close-subscription">
+								<button type="submit" name="close_subscription" value="true" class="wcsatt-partial-close-subscription__button wp-core-ui button"><?php _e( 'Manually Close Subscription', 'lightbox' ); ?></button>
+							</div>
+						<?php endif; ?>
 					<?php endif; ?>
 				</div>
 			</div>
@@ -886,39 +883,35 @@ class WCS_ATT_Admin {
 			}
 
 			// Get the original totall value
-			$ototal = $parent->get_total();
+			$ototal = $subscription->get_total();
 
 			// If the new oustanding value is greater than 0, the total becomes the outstanding
 			if ( $outstandingValue > 0 ) {
 
 				try {
-					$parent->set_total( $outstandingValue );
 	
-					$subscription->update_status('wc-on-hold');
+					$subscription->update_status('on-hold');
 					$parent->update_status('wc-on-hold');
 					
 					// Add an extra renewal order with the total of the oustanding balance
 					// var_dump(wcs_create_renewal_order(), wcs_create_renewal_order($subscription)); die;
-					$renewal_order = wcs_create_renewal_order( $parent );
-	
-					$subscription->payment_complete();
-		
-					// Set the total back to the original price in case it is needed again
-					$parent->set_total( $orderTotal );
-		
-					// Update parent order to completed
-					if ( $parent ) {
+					$renewal_order = wcs_create_renewal_order( $subscription );
+					$renewal_order->set_total( $outstandingValue );
+					if (0 !== $subscription->get_total()) {
+						// don't call payment_complete() because technically, no payment was received
+						$subscription->payment_complete();
+						$subscription->update_status('wc-completed');
+						$parent->payment_complete();
 						$parent->update_status('wc-completed');
+						$renewal_order->payment_complete();
+						$renewal_order->update_status( 'wc-completed', __( 'This subscription has been manually closed.', 'wcsatt' ) );
+						$initOrder->udate_status('wc-completed');
 					}
-					// Updated subscription to expired
-					if ( $subscription ) {
-						$subscription->update_status( 'wc-expired', __( 'This subscription has been manually closed.', 'wcsatt' ) );
-					}
-	
+
 				} catch( Exception $e) {
 					echo 'Caught exception: ',  $e->getMessage(), "\n";
 				}
-
+				
 			}
 
 			return true;
