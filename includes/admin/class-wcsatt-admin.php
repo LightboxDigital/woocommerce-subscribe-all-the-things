@@ -778,6 +778,7 @@ class WCS_ATT_Admin {
 			$outstandingValue = 0;
 			$orderTotal = $orderTotal + $firstInstallment;
 		} else {
+			$orderTotal = $orderTotal + $firstInstallment;
 			$outstandingValue = $orderTotal - $orderPaid;
 		}
 
@@ -879,6 +880,7 @@ class WCS_ATT_Admin {
 			if ( (int) $orderTotal == (int) $orderPaid ) {
 				$outstandingValue = 0;
 			} else {
+				$orderTotal = $orderTotal + $firstInstallment;
 				$outstandingValue = $orderTotal - $orderPaid;
 			}
 
