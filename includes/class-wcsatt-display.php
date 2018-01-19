@@ -386,14 +386,14 @@ class WCS_ATT_Display {
 				);
 
 				// Calculate price from original product objects
-				// $total = WCS_ATT_Cart::get_original_cart_total();
+				$total = WCS_ATT_Cart::get_original_cart_total();
 
 				foreach ( $subscription_schemes as $subscription_scheme ) {
 
 					$subscription_scheme_id = $subscription_scheme[ 'id' ];
-					$installments = WCS_ATT_Schemes::get_cart_scheme_installments( $subscription_scheme_id );
+					$installments = WCS_ATT_Schemes::get_scheme_installments( $subscription_scheme_id, $total );
 
-					$dummy_product                               = new WC_Product_Subscription( '1' );
+					$dummy_product                               = new WC_Product( '1' );
 					$dummy_product->product_type                 = 'subscription';
 					$dummy_product->is_converted_to_sub          = 'yes';
 					$dummy_product->subscription_price           = end( $installments );
