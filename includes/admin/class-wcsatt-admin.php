@@ -896,7 +896,6 @@ class WCS_ATT_Admin {
 					$parent->update_status('wc-on-hold');
 					
 					// Add an extra renewal order with the total of the oustanding balance
-					// var_dump(wcs_create_renewal_order(), wcs_create_renewal_order($subscription)); die;
 					$renewal_order = wcs_create_renewal_order( $subscription );
 					$renewal_order->set_total( $outstandingValue );
 					if (0 !== $subscription->get_total()) {

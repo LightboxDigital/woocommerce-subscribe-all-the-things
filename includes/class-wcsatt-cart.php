@@ -414,7 +414,40 @@ class WCS_ATT_Cart {
 			return $subscription_string;
 		}
 
-		// var_dump($include['price']);
+		// get actice coupon
+		$coupon = WC()->cart->get_coupons();
+
+		// preset vars
+		$coupon_leftover = null;
+		$reduction = null;
+		$no_price = null;
+
+		// Get order subtotal
+		$order_subtotal = WC()->cart->subtotal;
+
+		if ( $include['subscription_length'] && ! WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
+
+			if ( $coupon ) {
+				// get first coupon value (active coupon)
+				foreach ( $coupon as $val ) {
+					$coupon_price = floatval($val->coupon_amount);
+					break;
+				}
+
+				// calc left over coupon if any
+				// if ( ( $coupon_price - $order_subtotal ) > 0 ) {
+				// 	$no_price = true;
+				// 	$coupon_leftover = $coupon_price - $order_subtotal;
+				// }
+
+				// // divide amount my subscription length
+				// if ( $coupon_leftover ) {
+				// 	$reduction = $price - ( $coupon_leftover / floatval($product->subscription_length - 1) );
+
+				// 	$reduction = number_format( $reduction, 2 );
+				// }
+			}
+		}
 
 		if ( $include['sign_up_fee'] && WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
 			if ( true === $include['sign_up_fee'] ) {
@@ -435,16 +468,38 @@ class WCS_ATT_Cart {
 			$price = (float) preg_replace( '#[^\d.]#', '', $price );
 			$sign_up_fee = (float) preg_replace( '#[^\d.]#', '', $sign_up_fee );
 
+			// check if coupons exist
+			if ( $coupon ) {
+				// get first coupon value (active coupon)
+				foreach ( $coupon as $val ) {
+					$coupon_price = floatval($val->coupon_amount);
+					break;
+				}
+				// calc left over coupon if any
+				if ( ( $coupon_price - $order_subtotal ) > 0 ) {
+					$no_price = true;
+					$coupon_leftover = $coupon_price - $order_subtotal;
+				}
+
+				// divide amount my subscription length
+				if ( $coupon_leftover ) {
+					$reduction = $price - ( $coupon_leftover / floatval($product->subscription_length - 1) );
+
+					$reduction = number_format( $reduction, 2 );
+				}
+			}
+
 			// Needs to account for quantity ???
-			$sign_up_fee = wc_price( $sign_up_fee + $price );
+			$sign_up_fee = $no_price ? '£0.00' : wc_price( $sign_up_fee + $price );
 
 			$product->subscription_length --;
-			$subscription_string = WC_Subscriptions_Product::get_price_string( $product, array( 'price' => wc_price( $price ), 'sign_up_fee' => false ) );
+			$subscription_string = WC_Subscriptions_Product::get_price_string( $product, array( 'price' => wc_price( $reduction ? $reduction : $price ), 'sign_up_fee' => false ) );
 			$product->subscription_length ++;
 
 			// translators: 1$: subscription string (e.g. "$15 on March 15th every 3 years for 6 years with 2 months free trial"), 2$: signup fee price (e.g. "and a $30 sign-up fee")
 			$subscription_string = sprintf( __( 'Initial payment of %2$s followed by %1$s', 'woocommerce-subscriptions' ), $subscription_string, $sign_up_fee );
 		}
+
 
 		return $subscription_string;
 	}

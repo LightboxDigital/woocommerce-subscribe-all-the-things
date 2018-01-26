@@ -405,8 +405,6 @@ class WCS_ATT_Display {
 						$dummy_product->subscription_sign_up_fee = ( reset( $installments ) - end( $installments ) );
 					}
 
-					// var_dump($dummy_product);
-
 					$desc  = WC_Subscriptions_Product::get_price_string( $dummy_product, array( 'price' => wc_price( end( $installments ) ) ) );
 
 					$options[ $subscription_scheme[ 'id' ] ] = array(
